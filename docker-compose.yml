@@ -1,0 +1,68 @@
+version: '3.9'
+services:
+  metabase:
+    build: metabase/.
+    container_name: metabase-sub-path
+    hostname: metabase
+    environment:
+      - "MB_SITE_URL=http://localhost:9090/metabase/"
+      # - "MB_SESSION_COOKIE_SAMESITE=None"
+      - "MB_EMBEDDING_APP_ORIGIN=*"
+      - "MB_ENABLE_EMBEDDING=true"
+      - "MB_PREMIUM_EMBEDDING_TOKEN=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+      - "MB_JWT_ENABLED=true"
+      - "MB_JWT_IDENTITY_PROVIDER_URI=http://localhost:8080/api/auth/metabase"
+      - "MB_JWT_SHARED_SECRET=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff"
+    networks:
+      - metanet1
+    healthcheck:
+      test: curl --fail -I http://localhost:3000/api/health || exit 1
+      interval: 15s
+      timeout: 5s
+      retries: 5
+  nginx-logging:
+    image: nginx:1.21.6-alpine
+    hostname: nginx
+    container_name: nginx
+    volumes:
+      - $PWD/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - $PWD/nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - metanet1
+    ports:
+      - 9090:80
+    cpus: 1
+    mem_limit: 128m
+    depends_on:
+      metabase:
+        condition: service_healthy
+  setup-sub-path:
+    image: bash:5.1.16
+    container_name: setup-sub-path
+    volumes:
+      - $PWD/setup:/tmp
+    networks:
+      - metanet1
+    depends_on:
+      metabase:
+        condition: service_healthy
+    command: sh /tmp/metabase-setup.sh metabase:3000
+  node-sub-path:
+    build: .
+    container_name: webapp-sub-path
+    hostname: webapp
+    ports:
+      - 8080:8080
+    networks:
+      - metanet1
+    environment:
+      - METABASE_URL=http://localhost:9090/metabase/
+      - PORT=8080
+      - METABASE_JWT_SHARED_SECRET=ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff
+      # - MODS=top_nav=true&search=true&new_button=true
+    depends_on:
+      metabase:
+        condition: service_healthy
+networks:
+  metanet1:
+    driver: bridge
